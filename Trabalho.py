@@ -1,3 +1,9 @@
+#André Vitor
+#Gabriel Sinis
+#Eduardo Scarpini
+#João Vitor Porto
+#Melissa Rocha
+#Pedro Santos
 import re
 import requests
 from datetime import datetime
@@ -133,3 +139,4 @@ rodape = tk.Label(janela, text="Desenvolvido em Python", font=("Arial", 9), fg="
 rodape.pack(side="bottom", pady=5)
 
 janela.mainloop()
+
