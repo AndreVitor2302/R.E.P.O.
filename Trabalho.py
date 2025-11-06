@@ -12,45 +12,30 @@ def extrair_datas_pdf(caminho_pdf):
         for pagina in reader.pages:
             texto += pagina.extract_text() or ""
         
-        padrao_data = re.compile(
-            r'\b(\d{1,2}\s+de\s+[a-zA-ZçÇãõáéíóúâêôû]+\s+de\s+\d{4})\b|'  
-            r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b',                             
-            re.IGNORECASE
-        )
+        # Verificando o conteúdo extraído
+        print("Texto extraído do PDF:")
+        print(texto)
+        
+        # Regex para capturar datas no formato YYYY-MM-DD
+        padrao_data = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
         
         matches = padrao_data.findall(texto)
-        datas = [match[0] or match[1] for match in matches if match[0] or match[1]]
-        return datas if datas else ["Nenhuma data encontrada."]
+        datas = matches if matches else ["Nenhuma data encontrada."]
+        return datas
     except Exception as e:
         return [f"Erro ao ler o PDF: {e}"]
 
 def verificar_feriados(datas):
     feriados_por_ano = {}
-    meses_pt = {
-        'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6,
-        'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
-    }
     
-    datas_parseadas = []
+    # Chamar API para cada ano único
     anos = set()
     for data_str in datas:
         try:
-            if 'de' in data_str.lower():
-                partes = re.split(r'\s+de\s+', data_str.lower())
-                dia = int(partes[0])
-                mes_nome = partes[1].split()[0]  
-                ano = int(partes[2])
-                mes = meses_pt.get(mes_nome)
-                if mes:
-                    data_obj = datetime(ano, mes, dia)
-                    datas_parseadas.append((data_str, data_obj))
-                    anos.add(ano)
-            else:
-                data_obj = datetime.strptime(data_str, '%d/%m/%Y')
-                datas_parseadas.append((data_str, data_obj))
-                anos.add(data_obj.year)
-        except (ValueError, KeyError):
-            continue  
+            data_obj = datetime.strptime(data_str, '%Y-%m-%d')
+            anos.add(data_obj.year)
+        except ValueError:
+            continue  # Ignora datas inválidas
     
     for ano in anos:
         try:
@@ -60,19 +45,25 @@ def verificar_feriados(datas):
                 feriados = response.json()
                 feriados_por_ano[ano] = {f['date']: f['name'] for f in feriados}
             else:
-                feriados_por_ano[ano] = {}
+                feriados_por_ano[ano] = {}  # Caso erro ou ano sem feriados
         except requests.RequestException:
-            feriados_por_ano[ano] = {}
+            feriados_por_ano[ano] = {}  # Falha na chamada
     
     feriados_encontrados = []
-    for data_str, data_obj in datas_parseadas:
+    datas_nao_feriados = []
+    
+    # Verificar se as datas extraídas são feriados ou não
+    for data_str in datas:
+        data_obj = datetime.strptime(data_str, '%Y-%m-%d')
         ano = data_obj.year
         data_iso = data_obj.strftime('%Y-%m-%d')
         if data_iso in feriados_por_ano.get(ano, {}):
             nome_feriado = feriados_por_ano[ano][data_iso]
             feriados_encontrados.append(f"📅 {data_str} - {nome_feriado}")
+        else:
+            datas_nao_feriados.append(f"📅 {data_str} - Não é feriado")
     
-    return feriados_encontrados if feriados_encontrados else ["Nenhum feriado encontrado nas datas extraídas."]
+    return feriados_encontrados, datas_nao_feriados
 
 def selecionar_pdf():
     caminho_pdf = filedialog.askopenfilename(
@@ -84,20 +75,36 @@ def selecionar_pdf():
         janela.update()
         datas = extrair_datas_pdf(caminho_pdf)
         if "Erro" in datas[0] or "Nenhuma" in datas[0]:
-            resultado_label.config(text="\n".join(datas))
+            resultado_feriados_label.config(text="\n".join(datas))  # Atualizando o resultado de feriados
             status_label.config(text="")
             return
         
         status_label.config(text="Verificando feriados...")
         janela.update()
-        feriados = verificar_feriados(datas)
-        titulo_feriados_label.config(text="Datas Feriados Encontradas:")
-        resultado_label.config(text="\n".join(feriados))
+        feriados, nao_feriados = verificar_feriados(datas)
+        
+        # Exibir as datas de feriados
+        if feriados:
+            titulo_feriados_label.config(text="Datas de Feriados Encontradas:")
+            resultado_feriados_label.config(text="\n".join(feriados))  # Atualizando o resultado de feriados
+        else:
+            titulo_feriados_label.config(text="Nenhum feriado encontrado nas datas extraídas.")
+            resultado_feriados_label.config(text="Nenhuma data corresponde a feriados.")
+        
+        # Exibir as datas que não são feriados
+        if nao_feriados:
+            titulo_nao_feriados_label.config(text="Datas que não são feriados:")
+            resultado_nao_feriados_label.config(text="\n".join(nao_feriados))  # Atualizando o resultado de não feriados
+        else:
+            titulo_nao_feriados_label.config(text="Não há datas que não sejam feriados.")
+            resultado_nao_feriados_label.config(text="")
+        
         status_label.config(text="Verificação concluída.")
 
+# Interface Tkinter
 janela = tk.Tk()
 janela.title("Extrator de Datas Feriados em PDF")
-janela.geometry("500x350")
+janela.geometry("500x650")  # Ajustei a altura da janela para comportar mais texto
 janela.resizable(False, False)
 
 titulo = tk.Label(janela, text="📘 Extrator de Datas Feriados em PDF", font=("Arial", 14, "bold"))
@@ -109,13 +116,20 @@ botao.pack(pady=10)
 status_label = tk.Label(janela, text="", font=("Arial", 10), fg="blue")
 status_label.pack(pady=5)
 
+# Títulos para as datas de feriados e não feriados
 titulo_feriados_label = tk.Label(janela, text="", font=("Arial", 12, "bold"), fg="green")
 titulo_feriados_label.pack(pady=5)
 
-resultado_label = tk.Label(janela, text="Nenhum arquivo selecionado.", font=("Arial", 11), wraplength=450, justify="left")
-resultado_label.pack(pady=20)
+resultado_feriados_label = tk.Label(janela, text="Nenhum arquivo selecionado.", font=("Arial", 11), wraplength=450, justify="left")
+resultado_feriados_label.pack(pady=5)
 
-rodape = tk.Label(janela, text="Terceiro commit - Desenvolvido em Python", font=("Arial", 9), fg="gray")
+titulo_nao_feriados_label = tk.Label(janela, text="", font=("Arial", 12, "bold"), fg="red")
+titulo_nao_feriados_label.pack(pady=5)
+
+resultado_nao_feriados_label = tk.Label(janela, text="", font=("Arial", 11), wraplength=450, justify="left")
+resultado_nao_feriados_label.pack(pady=5)
+
+rodape = tk.Label(janela, text="Desenvolvido em Python", font=("Arial", 9), fg="gray")
 rodape.pack(side="bottom", pady=5)
 
 janela.mainloop()
